@@ -662,6 +662,10 @@ func flattenNodePool(d *schema.ResourceData, keyPrefix string, pool *godo.Kubern
 		rawPool["labels"] = flattenLabels(pool.Labels)
 	}
 
+	if pool.Taints != nil {
+		rawPool["taints"] = flattenTaints(pool.Taints)
+	}
+
 	if pool.Nodes != nil {
 		rawPool["nodes"] = flattenNodes(pool.Nodes)
 	}

@@ -133,7 +133,34 @@ func nodePoolSchema() map[string]*schema.Schema {
 			},
 		},
 
+		"taints": taintSchema(),
+
 		"nodes": nodeSchema(),
+	}
+}
+
+func taintSchema() *schema.Schema {
+	return &schema.Schema{
+		Type:     schema.TypeList,
+		Optional: true,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"key": {
+					Type:     schema.TypeString,
+					Computed: true,
+				},
+
+				"value": {
+					Type:     schema.TypeString,
+					Computed: true,
+				},
+
+				"effect": {
+					Type:     schema.TypeString,
+					Computed: true,
+				},
+			},
+		},
 	}
 }
 
@@ -185,6 +212,7 @@ func resourceDigitalOceanKubernetesNodePoolCreate(ctx context.Context, d *schema
 		"size":       d.Get("size"),
 		"tags":       d.Get("tags"),
 		"labels":     d.Get("labels"),
+		"taints":     d.Get("taints"),
 		"node_count": d.Get("node_count"),
 		"auto_scale": d.Get("auto_scale"),
 		"min_nodes":  d.Get("min_nodes"),
@@ -220,6 +248,7 @@ func resourceDigitalOceanKubernetesNodePoolRead(ctx context.Context, d *schema.R
 	d.Set("actual_node_count", pool.Count)
 	d.Set("tags", flattenTags(filterTags(pool.Tags)))
 	d.Set("labels", flattenLabels(pool.Labels))
+	d.Set("taints", flattenTaints(pool.Taints))
 	d.Set("auto_scale", pool.AutoScale)
 	d.Set("min_nodes", pool.MinNodes)
 	d.Set("max_nodes", pool.MaxNodes)
@@ -247,6 +276,7 @@ func resourceDigitalOceanKubernetesNodePoolUpdate(ctx context.Context, d *schema
 	}
 
 	rawPool["labels"] = d.Get("labels")
+	rawPool["taints"] = d.Get("taints")
 	rawPool["auto_scale"] = d.Get("auto_scale")
 	rawPool["min_nodes"] = d.Get("min_nodes")
 	rawPool["max_nodes"] = d.Get("max_nodes")
@@ -338,6 +368,7 @@ func digitaloceanKubernetesNodePoolCreate(client *godo.Client, pool map[string]i
 		Count:     pool["node_count"].(int),
 		Tags:      tags,
 		Labels:    expandLabels(pool["labels"].(map[string]interface{})),
+		Taints:    expandTaints(pool["taints"].([]interface{})),
 		AutoScale: pool["auto_scale"].(bool),
 		MinNodes:  pool["min_nodes"].(int),
 		MaxNodes:  pool["max_nodes"].(int),
@@ -385,6 +416,11 @@ func digitaloceanKubernetesNodePoolUpdate(client *godo.Client, pool map[string]i
 
 	if pool["labels"] != nil {
 		req.Labels = expandLabels(pool["labels"].(map[string]interface{}))
+	}
+
+	if pool["taints"] != nil {
+		taints := expandTaints(pool["taints"].([]interface{}))
+		req.Taints = &taints
 	}
 
 	p, resp, err := client.Kubernetes.UpdateNodePool(context.Background(), clusterID, poolID, req)
@@ -505,6 +541,41 @@ func flattenLabels(labels map[string]string) map[string]interface{} {
 	return flattenedLabels
 }
 
+func expandTaints(taints []interface{}) []godo.Taint {
+	expandedTaints := make([]godo.Taint, 0, len(taints))
+	for _, rawTaint := range taints {
+		taint := rawTaint.(map[string]interface{})
+		cr := godo.Taint{
+			Key:    taint["key"].(string),
+			Value:  taint["value"].(string),
+			Effect: taint["effect"].(string),
+		}
+
+		expandedTaints = append(expandedTaints, cr)
+	}
+
+	return expandedTaints
+}
+
+func flattenTaints(taints []godo.Taint) []interface{} {
+	flattenedTaints := make([]interface{}, 0)
+	if taints == nil {
+		return flattenedTaints
+	}
+
+	for _, taint := range taints {
+		rawTaint := map[string]interface{}{
+			"key":    taint.Key,
+			"value":  taint.Value,
+			"effect": taint.Effect,
+		}
+
+		flattenedTaints = append(flattenedTaints, rawTaint)
+	}
+
+	return flattenedTaints
+}
+
 func expandNodePools(nodePools []interface{}) []*godo.KubernetesNodePool {
 	expandedNodePools := make([]*godo.KubernetesNodePool, 0, len(nodePools))
 	for _, rawPool := range nodePools {
@@ -519,6 +590,7 @@ func expandNodePools(nodePools []interface{}) []*godo.KubernetesNodePool {
 			MaxNodes:  pool["max_nodes"].(int),
 			Tags:      expandTags(pool["tags"].(*schema.Set).List()),
 			Labels:    expandLabels(pool["labels"].(map[string]interface{})),
+			Taints:    expandTaints(pool["taints"].([]interface{})),
 			Nodes:     expandNodes(pool["nodes"].([]interface{})),
 		}
 

@@ -425,6 +425,12 @@ resource digitalocean_kubernetes_node_pool "barfoo" {
 	labels = {
       priority = "high"
 	}
+
+	taint {
+		key = "tier"
+		value = "db_tier"
+		effect = "NoSchedule"
+	}
 }
 `, testClusterVersion19, rName, rName)
 }
